@@ -1,0 +1,283 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(USER)
+  credits       Int       @default(100)
+  plan          Plan      @default(FREE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  projects      Project[]
+  collaborations ProjectCollaborator[]
+  usageHistory  UsageHistory[]
+  templates     Template[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  type        ProjectType   @default(WEBAPP)
+  status      ProjectStatus @default(DRAFT)
+  visibility  Visibility    @default(PRIVATE)
+  
+  // Generated content
+  prompt         String?       @db.Text
+  generatedCode  String?       @db.Text
+  htmlContent    String?       @db.Text
+  cssContent     String?       @db.Text
+  jsContent      String?       @db.Text
+  packageJson    String?       @db.Text
+  
+  // Deployment
+  deploymentUrl  String?
+  githubRepoUrl  String?
+  lastDeployedAt DateTime?
+  
+  // Metadata
+  framework      String?       @default("react")
+  aiModel        String?       @default("gpt-4")
+  tokens         Int?          @default(0)
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  
+  // Relations
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collaborators  ProjectCollaborator[]
+  files          ProjectFile[]
+  versions       ProjectVersion[]
+  deployments    Deployment[]
+  
+  @@index([userId])
+  @@index([status])
+}
+
+model ProjectFile {
+  id        String   @id @default(cuid())
+  filename  String
+  content   String   @db.Text
+  language  String   @default("javascript")
+  path      String
+  size      Int      @default(0)
+  
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([projectId, path])
+}
+
+model ProjectVersion {
+  id          String   @id @default(cuid())
+  version     String
+  description String?
+  content     String   @db.Text
+  
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([projectId, version])
+}
+
+model ProjectCollaborator {
+  id         String           @id @default(cuid())
+  role       CollaboratorRole @default(VIEWER)
+  
+  projectId  String
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  invitedAt  DateTime         @default(now())
+  acceptedAt DateTime?
+  
+  @@unique([projectId, userId])
+}
+
+model Template {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  category    String
+  tags        String[]
+  
+  // Template content
+  prompt      String       @db.Text
+  code        String       @db.Text
+  preview     String?      @db.Text
+  
+  // Metadata
+  framework   String       @default("react")
+  difficulty  Difficulty   @default(BEGINNER)
+  featured    Boolean      @default(false)
+  public      Boolean      @default(true)
+  downloads   Int          @default(0)
+  
+  // Relations
+  authorId    String
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([category])
+  @@index([featured])
+}
+
+model Deployment {
+  id          String          @id @default(cuid())
+  url         String
+  status      DeploymentStatus @default(PENDING)
+  platform    String          @default("vercel")
+  
+  // Build info
+  buildLogs   String?         @db.Text
+  buildTime   Int?            // in seconds
+  
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  deployedAt  DateTime        @default(now())
+  
+  @@index([projectId])
+  @@index([status])
+}
+
+model UsageHistory {
+  id        String      @id @default(cuid())
+  action    UsageAction
+  tokens    Int         @default(0)
+  credits   Int         @default(1)
+  
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  STARTER
+  LAUNCH
+  SCALE
+  TEAMS
+}
+
+enum ProjectType {
+  WEBAPP
+  WEBSITE
+  DASHBOARD
+  MOBILE_APP
+  API
+  COMPONENT
+}
+
+enum ProjectStatus {
+  DRAFT
+  GENERATING
+  READY
+  DEPLOYED
+  ERROR
+}
+
+enum Visibility {
+  PRIVATE
+  PUBLIC
+  UNLISTED
+}
+
+enum CollaboratorRole {
+  VIEWER
+  EDITOR
+  ADMIN
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum DeploymentStatus {
+  PENDING
+  BUILDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum UsageAction {
+  GENERATE_CODE
+  DEPLOY_PROJECT
+  CREATE_PROJECT
+  EXPORT_CODE
+  AI_CHAT
+}
